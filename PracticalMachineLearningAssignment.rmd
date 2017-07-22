@@ -1,0 +1,126 @@
+---
+title: "PracticalMachineLearningAssignment"
+author: "Hadi Tjioe"
+output: html_document
+---
+
+##Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+##Goal
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+
+##1. Preparation
+Prepraration includes calling the libraries, setting up seed to ensure repeatability, and setting up working directory.
+
+```{r, echo=TRUE, cache=TRUE, warning=FALSE}
+library(knitr)
+library(caret)
+library(rpart)
+library(randomForest)
+library(corrplot)
+set.seed(333)
+setwd("D:/Coursera/PracticalMachineLearning/")
+```
+
+##2. Loading Data
+Loading data and grouping the train set to train (70%) and validation (30%). Test set is unchanged.
+
+The training data for this project was pre-downloaded from:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data was pre-downloaded from:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+```{r, echo=TRUE,cache=TRUE,warning=FALSE}
+
+training <- read.csv("pml-training.csv")
+testing <- read.csv("pml-testing.csv")
+
+inTrain  <- createDataPartition(training$classe, p=0.7, list=FALSE)
+TrainSet <- training[inTrain, ]
+ValidationSet  <- training[-inTrain, ]
+TestSet <- testing
+
+dim(TrainSet)
+dim(ValidationSet)
+```
+
+Data sets are observed to have many columns with NA and static values which will not be valuable for modelling purpose.
+
+```{r, echo=TRUE,cache=TRUE,warning=FALSE}
+# removing mostly NA columns
+checkNA <- sapply(TrainSet, function(x) mean(is.na(x))) > 0.9
+TrainSet <- TrainSet[, checkNA==FALSE]
+ValidationSet  <- ValidationSet[, checkNA==FALSE]
+
+# removing static columns
+nearZeroVariance <- nearZeroVar(TrainSet)
+TrainSet <- TrainSet[, -nearZeroVariance]
+ValidationSet  <- ValidationSet[, -nearZeroVariance]
+
+# removing 1st 5 columns
+TrainSet <- TrainSet[, -(1:5)]
+ValidationSet  <- ValidationSet[, -(1:5)]
+
+dim(TrainSet)
+dim(ValidationSet)
+```
+
+After pre-processing, only `r dim(TrainSet)[2]` columns remained in TrainSet and `r dim(ValidationSet)[2]` columns remained in ValidationSet.
+
+##3. Colinearity Check
+```{r, echo=TRUE,cache=TRUE,warning=FALSE}
+corMatrix <- cor(TrainSet[, -54])
+corrplot(corMatrix, method = "color", type = "lower", tl.cex = 0.7, tl.col = rgb(0, 0, 0))
+```
+
+The above plot show the degree of correlation of each of the variables in colors (darker colors mean higher correlation). In this case, most of the variables are observed to have no correlations between them. Few of them have high correlation between them which we can use PCA to combine them first. However, since the number of highly correlated variables are limited, PCA is not applied in this case.
+
+##4. Modelling 
+We'll use 2 methods (Random Forest and Decision Tree) for modelling based on TestSet.
+
+#a. Random Forest
+Model Building on TestSet
+```{r, echo=TRUE,cache=TRUE,warning=FALSE}
+modelRF <- train(classe ~ ., method="rf", data=TrainSet, trControl=trainControl(method="cv",number=3))
+modelRF$finalModel
+```
+
+Prediction on ValidationSet
+```{r, echo=TRUE,cache=TRUE,warning=FALSE}
+predictRF <- predict(modelRF, newdata=ValidationSet)
+confRF <- confusionMatrix(predictRF, ValidationSet$classe)
+confRF
+```
+
+#b. Decision Tree
+Model Building on TestSet
+```{r, echo=TRUE,cache=TRUE,warning=FALSE}
+modelDT <- train(classe ~ ., method="rpart", data=TrainSet)
+modelDT$finalModel
+```
+
+Prediction on ValidationSet
+```{r, echo=TRUE,cache=TRUE,warning=FALSE}
+predictDT <- predict(modelDT, newdata=ValidationSet)
+confDT <- confusionMatrix(predictDT, ValidationSet$classe)
+confDT
+```
+
+
+Accuracy of the above 2 models are summarized as follow:
+
+1. Random Forest - `r confRF$overall['Accuracy']`
+
+2. Decision Tree - `r confDT$overall['Accuracy']`
+
+##5. Prediction
+
+As Random Forest has the highest accuracy, it will be used to predict the TestSet result.
+```{r, echo=TRUE,cache=TRUE,warning=FALSE}
+predictRF <- predict(modelRF, newdata=TestSet)
+predictRF
+```
+
